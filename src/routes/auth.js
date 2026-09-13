@@ -3,16 +3,16 @@ const router = express.Router();
 const authService = require('../services/auth');
 const { loginRateLimiter } = require('../middleware/rateLimit');
 
-// GET /auth/login - Render login form
-router.get('/login', (req, res) => {
+// GET /auth/login or /login - Render login form
+router.get(['/auth/login', '/login'], (req, res) => {
   if (req.session && req.session.user) {
     return res.redirect('/science/dashboard');
   }
   res.render('science/login', { error: null, redirect: req.query.redirect || '/science/dashboard' });
 });
 
-// POST /auth/login - Form-based login
-router.post('/login', loginRateLimiter, async (req, res) => {
+// POST /auth/login or /login - Form-based login
+router.post(['/auth/login', '/login'], loginRateLimiter, async (req, res) => {
   try {
     const { username, password, redirect } = req.body;
     const user = await authService.authenticate(username, password, { ip: req.ip });
@@ -49,8 +49,8 @@ router.post('/api/auth/logout', (req, res) => {
   });
 });
 
-// GET /auth/logout - Browser Logout
-router.get('/logout', (req, res) => {
+// GET /auth/logout or /logout - Browser Logout
+router.get(['/auth/logout', '/logout'], (req, res) => {
   req.session.destroy(() => {
     res.redirect('/');
   });

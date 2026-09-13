@@ -6,14 +6,16 @@ const supabaseUrl = rawUrl.trim().replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, 
 const supabaseKey = (process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_KEY || '').trim();
 
 // Check if live Supabase is configured
-const isPlaceholder = !supabaseUrl || 
-  !supabaseKey || 
-  supabaseUrl.includes('placeholder-project') || 
+const isPlaceholder = !supabaseUrl ||
+  !supabaseKey ||
+  supabaseUrl.includes('placeholder-project') ||
   supabaseKey.includes('placeholder');
+
+const isTestEnv = process.env.NODE_ENV === 'test' && process.env.USE_LIVE_DB_IN_TESTS !== 'true';
 
 let client;
 
-if (!isPlaceholder && process.env.USE_MOCK_DB !== 'true') {
+if (!isPlaceholder && !isTestEnv && process.env.USE_MOCK_DB !== 'true') {
   client = createClient(supabaseUrl, supabaseKey);
 } else {
   // Built-in in-memory fallback adapter for testing and offline development
