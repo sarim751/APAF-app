@@ -1,0 +1,37 @@
+{
+  "name": "apaf-lite",
+  "version": "1.0.0",
+  "description": "ASPERA-3 Processing and Archiving Facility Lite",
+  "main": "src/app.js",
+  "scripts": {
+    "start": "node src/app.js",
+    "test": "jest --forceExit --detectOpenHandles",
+    "seed": "node src/db/seed.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sarim751/APAF-app.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/sarim751/APAF-app/issues"
+  },
+  "homepage": "https://github.com/sarim751/APAF-app#readme",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.116.0",
+    "ajv": "^8.20.0",
+    "bcrypt": "^6.0.0",
+    "dotenv": "^17.4.2",
+    "ejs": "^6.0.1",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "express-session": "^1.19.0"
+  },
+  "devDependencies": {
+    "jest": "^30.5.1",
+    "supertest": "^7.2.2"
+  }
+}

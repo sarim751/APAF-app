@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>APAF-Lite | Science Team Operations Dashboard</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --success: #22c55e;
+      --warning: #eab308;
+      --danger: #ef4444;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2rem 1rem;
+    }
+    .container { max-width: 1200px; margin: 0 auto; }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .title-group h1 { font-size: 1.75rem; color: var(--accent); }
+    .title-group p { color: var(--muted); font-size: 0.9rem; }
+    .user-badge {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+    .btn {
+      display: inline-block;
+      padding: 0.45rem 0.9rem;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      text-decoration: none;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      color: var(--text);
+      transition: all 0.2s;
+    }
+    .btn:hover { background: #273549; }
+    .btn-release {
+      background: var(--accent);
+      color: #0f172a;
+      font-weight: 600;
+      border: none;
+    }
+    .btn-release:hover { opacity: 0.9; }
+    .badge {
+      font-size: 0.75rem;
+      padding: 0.2rem 0.55rem;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+    .badge-released { background: rgba(34, 197, 94, 0.2); color: var(--success); border: 1px solid rgba(34, 197, 94, 0.4); }
+    .badge-restricted { background: rgba(234, 179, 8, 0.2); color: var(--warning); border: 1px solid rgba(234, 179, 8, 0.4); }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-top: 1rem;
+    }
+    th, td {
+      padding: 0.85rem 1rem;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      font-size: 0.875rem;
+    }
+    th {
+      background: #172033;
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.75rem;
+      letter-spacing: 0.05em;
+    }
+    tr:last-child td { border-bottom: none; }
+    pre {
+      font-family: monospace;
+      font-size: 0.8rem;
+      background: #0b1120;
+      padding: 0.5rem;
+      border-radius: 4px;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="title-group">
+        <h1>Science Team Operations Dashboard</h1>
+        <p>Full ASPERA-3 Data Sets &bull; Ingested, Processed & Archived</p>
+      </div>
+      <div class="user-badge">
+        <span>Logged in as: <strong><%= user.username %></strong> (<%= user.role %>)</span>
+        <% if (user.role === 'ADMIN') { %>
+          <a href="/admin/logs" class="btn">System Logs</a>
+        <% } %>
+        <a href="/" class="btn">Public View</a>
+        <a href="/auth/logout" class="btn">Sign Out</a>
+      </div>
+    </header>
+
+    <main>
+      <h2>IDFS Data Sets (All <%= datasets.length %> Records)</h2>
+      <% if (datasets.length === 0) { %>
+        <div style="background: var(--card-bg); padding: 2rem; border-radius: 8px; margin-top: 1rem; text-align: center; color: var(--muted);">
+          No datasets processed yet. Ingest telemetry packets via <code>POST /api/telemetry/ingest</code> to begin.
+        </div>
+      <% } else { %>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Packet Ref</th>
+              <th>Instrument</th>
+              <th>Status</th>
+              <th>Payload (IDFS)</th>
+              <th>Created</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% datasets.forEach(function(ds) { %>
+              <tr>
+                <td><strong>#<%= ds.id %></strong></td>
+                <td>Packet #<%= ds.packet_id %></td>
+                <td><span style="font-weight: 600; color: var(--accent);"><%= ds.instrument %></span></td>
+                <td>
+                  <% if (ds.public_released === 1) { %>
+                    <span class="badge badge-released">PUBLIC RELEASED</span>
+                  <% } else { %>
+                    <span class="badge badge-restricted">SCIENCE ONLY</span>
+                  <% } %>
+                </td>
+                <td style="max-width: 380px;">
+                  <pre><%= JSON.stringify(ds.data_json, null, 2) %></pre>
+                </td>
+                <td style="font-size: 0.8rem; color: var(--muted);"><%= new Date(ds.created_at).toLocaleString() %></td>
+                <td>
+                  <% if (user.role === 'ADMIN' && ds.public_released !== 1) { %>
+                    <button class="btn btn-release" onclick="releaseDataset(<%= ds.id %>)">Release &rarr;</button>
+                  <% } else if (ds.public_released === 1) { %>
+                    <span style="font-size: 0.8rem; color: var(--muted);">Active in public</span>
+                  <% } else { %>
+                    <span style="font-size: 0.8rem; color: var(--muted);">Admin release required</span>
+                  <% } %>
+                </td>
+              </tr>
+            <% }); %>
+          </tbody>
+        </table>
+      <% } %>
+    </main>
+  </div>
+
+  <script>
+    async function releaseDataset(id) {
+      if (!confirm('Release dataset #' + id + ' to the public dashboard?')) return;
+      try {
+        const res = await fetch('/api/datasets/' + id + '/release', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (res.ok) {
+          window.location.reload();
+        } else {
+          alert('Error releasing dataset: ' + (data.message || 'Unknown error'));
+        }
+      } catch (err) {
+        alert('Network error releasing dataset');
+      }
+    }
+  </script>
+</body>
+</html>

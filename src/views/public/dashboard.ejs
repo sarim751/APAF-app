@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>APAF-Lite | ASPERA-3 Public Science Portal</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card-bg: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --success: #22c55e;
+      --warning: #eab308;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2rem 1rem;
+    }
+    .container { max-width: 1100px; margin: 0 auto; }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2.5rem;
+      padding-bottom: 1.5rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .title-group h1 { font-size: 1.75rem; font-weight: 700; color: var(--accent); }
+    .title-group p { color: var(--muted); font-size: 0.9rem; margin-top: 0.25rem; }
+    .nav-links a {
+      display: inline-block;
+      padding: 0.5rem 1rem;
+      background: var(--card-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      text-decoration: none;
+      font-size: 0.875rem;
+      transition: all 0.2s;
+    }
+    .nav-links a:hover { background: #273549; border-color: var(--accent); }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1.5rem;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+    }
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+      padding-bottom: 0.75rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .card-header h2 { font-size: 1.25rem; }
+    .badge {
+      font-size: 0.75rem;
+      padding: 0.25rem 0.6rem;
+      border-radius: 9999px;
+      font-weight: 600;
+    }
+    .badge-live { background: rgba(34, 197, 94, 0.2); color: var(--success); border: 1px solid rgba(34, 197, 94, 0.4); }
+    .badge-none { background: rgba(148, 163, 184, 0.2); color: var(--muted); border: 1px solid rgba(148, 163, 184, 0.3); }
+    .data-box {
+      background: #0b1120;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 1rem;
+      font-family: monospace;
+      font-size: 0.85rem;
+      overflow-x: auto;
+      margin: 1rem 0;
+      flex-grow: 1;
+    }
+    .meta-row {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin-top: 0.5rem;
+    }
+    footer {
+      margin-top: 3rem;
+      text-align: center;
+      font-size: 0.8rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      padding-top: 1.5rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="title-group">
+        <h1>ASPERA-3 / Mars Express Public Science Portal</h1>
+        <p>APAF-Lite — Automated Processing & Archiving Facility</p>
+      </div>
+      <div class="nav-links">
+        <% if (user) { %>
+          <a href="/science/dashboard">Science Dashboard (<%= user.username %>)</a>
+          <a href="/auth/logout">Logout</a>
+        <% } else { %>
+          <a href="/auth/login">Science Team Login &rarr;</a>
+        <% } %>
+      </div>
+    </header>
+
+    <main>
+      <div class="grid">
+        <!-- ELS Card -->
+        <div class="card" id="card-els">
+          <div class="card-header">
+            <h2>ELS (Electron Spectrometer)</h2>
+            <% if (instruments.ELS) { %>
+              <span class="badge badge-live">RELEASED</span>
+            <% } else { %>
+              <span class="badge badge-none">NO RELEASED DATA</span>
+            <% } %>
+          </div>
+          <p style="color: var(--muted); font-size: 0.85rem;">Measures solar wind and ionospheric electron flux.</p>
+          <% if (instruments.ELS) { %>
+            <div class="data-box">
+              <pre><%= JSON.stringify(instruments.ELS.data_json, null, 2) %></pre>
+            </div>
+            <div class="meta-row">
+              <span>Dataset ID: #<%= instruments.ELS.id %></span>
+              <span>Updated: <%= new Date(instruments.ELS.created_at).toLocaleString() %></span>
+            </div>
+          <% } else { %>
+            <div class="data-box" style="color: var(--muted); font-style: italic;">
+              Pending science team evaluation & release approval.
+            </div>
+          <% } %>
+        </div>
+
+        <!-- IMA Card -->
+        <div class="card" id="card-ima">
+          <div class="card-header">
+            <h2>IMA (Ion Mass Analyzer)</h2>
+            <% if (instruments.IMA) { %>
+              <span class="badge badge-live">RELEASED</span>
+            <% } else { %>
+              <span class="badge badge-none">NO RELEASED DATA</span>
+            <% } %>
+          </div>
+          <p style="color: var(--muted); font-size: 0.85rem;">Measures ion mass-composition, energy, and sensor angles.</p>
+          <% if (instruments.IMA) { %>
+            <div class="data-box">
+              <pre><%= JSON.stringify(instruments.IMA.data_json, null, 2) %></pre>
+            </div>
+            <div class="meta-row">
+              <span>Dataset ID: #<%= instruments.IMA.id %></span>
+              <span>Updated: <%= new Date(instruments.IMA.created_at).toLocaleString() %></span>
+            </div>
+          <% } else { %>
+            <div class="data-box" style="color: var(--muted); font-style: italic;">
+              Pending science team evaluation & release approval.
+            </div>
+          <% } %>
+        </div>
+
+        <!-- NPD Card -->
+        <div class="card" id="card-npd">
+          <div class="card-header">
+            <h2>NPD (Neutral Particle Detector)</h2>
+            <% if (instruments.NPD) { %>
+              <span class="badge badge-live">RELEASED</span>
+            <% } else { %>
+              <span class="badge badge-none">NO RELEASED DATA</span>
+            <% } %>
+          </div>
+          <p style="color: var(--muted); font-size: 0.85rem;">Measures energetic neutral hydrogen and oxygen atoms.</p>
+          <% if (instruments.NPD) { %>
+            <div class="data-box">
+              <pre><%= JSON.stringify(instruments.NPD.data_json, null, 2) %></pre>
+            </div>
+            <div class="meta-row">
+              <span>Dataset ID: #<%= instruments.NPD.id %></span>
+              <span>Updated: <%= new Date(instruments.NPD.created_at).toLocaleString() %></span>
+            </div>
+          <% } else { %>
+            <div class="data-box" style="color: var(--muted); font-style: italic;">
+              Pending science team evaluation & release approval.
+            </div>
+          <% } %>
+        </div>
+      </div>
+    </main>
+
+    <footer>
+      <p>ASPERA-3 Processing and Archiving Facility (APAF-Lite) &bull; Mars Express Science Operations</p>
+    </footer>
+  </div>
+</body>
+</html>

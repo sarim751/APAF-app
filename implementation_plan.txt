@@ -1,0 +1,273 @@
+# APAF-Lite — SE3002 Implementation Plan
+### Quality Evaluation of AI-Generated Software — Assignment 01
+**SRS Source:** APAF-SRS-15-03561-V1.0 (ASPERA-3 Processing and Archiving Facility, Mars Express / IRF / SwRI)
+**Stack:** Node.js + Express, SQLite (`better-sqlite3`), EJS views, bcrypt + express-session, ajv (schema validation), jest + supertest
+
+> This document is written to be handed directly to a coding agent. Each phase has a scope, concrete deliverables, and a definition of done. Work through phases in order — later phases depend on earlier ones being functional, not perfect.
+
+---
+
+## 1. Requirement Scope (7 FR + 3 NFR)
+
+CRUD check: only **2 of 7** FRs are CRUD-like (Archive, Public Display) — within the 3-max limit.
+
+| ID | Type | Requirement (as written in SRS) | AI assumption | Basis |
+|---|---|---|---|---|
+| APAF-FR-01 | FR | "shall acquire from ESOC the telemetry data of the ASPERA-3 Experiment and Mars Express Orbit/Attitude" | Ingestion = file/JSON upload simulating an ESOC delivery, not a live network link | Design decision |
+| APAF-FR-02 | FR | "shall process all ASPERA-3 science data into IDFS data sets" | IDFS format defined by us as a JSON schema (real IDFS spec not public) | Unsupported (disclose) |
+| APAF-FR-04 | FR | "Intermediate files ... shall be generated in the event that cleaned-up telemetry is not provided by ESOC" | "Not cleaned" = missing/false `cleaned` flag on the ingested packet | Design decision |
+| APAF-FR-05/06/06a | FR (grouped: "Archive") | telemetry, IDFS data sets, and intermediate files "shall be stored on a local SwRI archive" | Local archive = app's own DB, not literal SwRI infra | SRS-supported |
+| APAF-FR-07 | FR | "Web-based displays of the most current ASPERA-3 data shall be provided for public view" | "Most current" = latest **released** record per instrument | SRS-supported |
+| APAF-FR-08/08a | FR (grouped) | "Web-based displays defined by the ASPERA-3 team...for science analysis...password protected until...made public" | Two roles: Public vs Science-Team; "public" = an admin-toggled `publicReleased` flag | Design decision |
+| APAF-FR-09 | FR | "shall have built-in error handling" | Errors logged with codes, surfaced in an admin System Log screen (mirrors APAF-DS-OI-2) | Design decision |
+| APAF-PR-01 | NFR (Security) | "web server shall be password protected...to allow only pertinent ASPERA-3 team members access" | — | SRS-supported |
+| APAF-DR-01a | NFR (Timeliness) | "IDFS data...shall be provided...within 24 hours of acquiring...telemetry" | Real 24h SLA scaled down to a configurable test-environment threshold | Design decision (disclose) |
+| APAF-DR-02a | NFR (Compliance) | "ASPERA-3 data shall be provided to NASA PDS in PDS-compliant form" | Compliance = passes our own defined JSON schema, not real PDS certification | Unsupported (disclose) |
+
+**Instrument scope:** ELS, IMA, NPD (each has a real SDD reference in the SRS).
+- **ELS** — simplest, single energy/flux stream — the "happy path" instrument.
+- **IMA** — adds mass/energy/angle dimensions — source of a genuine boundary case (amu/q max = 1e6 per SRS §4.1.1.3).
+- **NPD** — deliberately left with one unhandled edge case (see Phase 4) — source of a genuine FAILED/BLOCKED test, not a fabricated one.
+
+---
+
+## 2. Data Model (SQLite)
+
+```sql
+CREATE TABLE telemetry_packets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  packet_id TEXT UNIQUE NOT NULL,
+  source TEXT NOT NULL CHECK (source IN ('ASPERA-3','MEX-OA')),
+  instrument TEXT CHECK (instrument IN ('ELS','IMA','NPD', NULL)),
+  received_at TEXT NOT NULL,
+  cleaned INTEGER NOT NULL DEFAULT 0,      -- 0/1, per FR-04 trigger
+  status TEXT NOT NULL DEFAULT 'RECEIVED', -- RECEIVED | CLEANED | PROCESSED | BLOCKED | REJECTED
+  payload_json TEXT NOT NULL               -- raw instrument-specific fields
+);
+
+CREATE TABLE intermediate_files (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  packet_id INTEGER NOT NULL REFERENCES telemetry_packets(id),
+  generated_at TEXT NOT NULL,
+  cleanup_notes TEXT,
+  status TEXT NOT NULL DEFAULT 'OK'        -- OK | BLOCKED (unrecoverable corruption)
+);
+
+CREATE TABLE idfs_datasets (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  packet_id INTEGER NOT NULL REFERENCES telemetry_packets(id),
+  instrument TEXT NOT NULL,
+  data_json TEXT NOT NULL,                 -- transformed IDFS-format payload
+  public_released INTEGER NOT NULL DEFAULT 0,
+  processing_started_at TEXT NOT NULL,
+  processing_completed_at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE archive_records (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  artifact_type TEXT NOT NULL CHECK (artifact_type IN ('TELEMETRY','INTERMEDIATE','IDFS')),
+  artifact_id INTEGER NOT NULL,
+  stored_at TEXT NOT NULL,
+  checksum TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL
+);
+
+CREATE TABLE users (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  username TEXT UNIQUE NOT NULL,
+  password_hash TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('SCIENCE_TEAM','ADMIN'))
+);
+
+CREATE TABLE system_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  code TEXT NOT NULL,             -- e.g. ERR_INVALID_PACKET, ERR_AUTH_FAILED, ERR_PROCESSING_BLOCKED
+  message TEXT NOT NULL,
+  severity TEXT NOT NULL CHECK (severity IN ('INFO','WARNING','ERROR')),
+  context_json TEXT,
+  created_at TEXT NOT NULL
+);
+```
+
+---
+
+## 3. API Surface (per FR)
+
+### FR-01 — Ingestion (`routes/ingestion.js`)
+- `POST /api/telemetry/ingest`
+  - Body: `{ packetId, source, instrument, cleaned, payload }`
+  - Validate: required fields present, `packetId` unique, `source`/`instrument` in allowed enums, `payload` matches a minimal per-instrument shape.
+  - On success → insert `telemetry_packets` row, status `RECEIVED`, write `system_logs` INFO entry, archive raw packet (calls Archive service), and if `cleaned=1` immediately trigger FR-02 processing.
+  - On failure → 400 + `ERR_INVALID_PACKET`, write `system_logs` ERROR entry (FR-09).
+
+### FR-04 — Intermediate file generation (`services/cleanupService.js`)
+- Triggered automatically inside the ingestion flow when `cleaned=0`.
+- Logic: run dedup check (packetId), gap-flagging on payload fields, attempt to fill/normalize missing non-critical fields.
+  - If recoverable → insert `intermediate_files` row (`status='OK'`), set `telemetry_packets.cleaned=1`, `status='CLEANED'`, archive the intermediate file, then trigger FR-02.
+  - If unrecoverable (missing a *required* field even after cleanup — this is the deliberate NPD gap, see Phase 4) → insert `intermediate_files` row (`status='BLOCKED'`), set packet `status='BLOCKED'`, write `system_logs` ERROR entry, **do not** proceed to processing.
+
+### FR-02 — Processing (`routes/processing.js`, `services/idfsProcessor.js`)
+- `POST /api/processing/run/:packetId` (also auto-invoked after ingestion/cleanup)
+  - Precondition: packet `status` is `RECEIVED` (already cleaned) or `CLEANED`.
+  - Dispatch to per-instrument transform function:
+    - `processELS(payload)` → `{ energyRange, electronFlux, timestamp }`
+    - `processIMA(payload)` → `{ mass, energy, angle, amuPerQ, ionFlux }` — **validate `1 <= amuPerQ <= 1e6`** (SRS §4.1.1.3); out-of-range → `ERR_IMA_RANGE`.
+    - `processNPD(payload)` → `{ hydrogenFlux, oxygenFlux, energyRange }` — see Phase 4 for the intentional gap.
+  - Validate the transformed output against `idfs-schema.json` (ajv) — this is where NFR APAF-DR-02a is enforced.
+  - On success → insert `idfs_datasets` row with `processing_started_at`/`processing_completed_at` timestamps, archive it, set packet `status='PROCESSED'`.
+  - On failure → `ERR_PROCESSING_FAILED`, log to `system_logs`, packet stays at prior status (do not silently mark processed).
+
+### FR-05/06/06a — Archive (`routes/archive.js`, `services/archiveService.js`)
+- Internal: `archiveArtifact(type, id, payload)` — computes checksum (sha256), size, inserts `archive_records`. Called automatically by ingestion, cleanup, and processing.
+- `GET /api/archive?type=&instrument=&dateFrom=&dateTo=` — search/browse.
+- `GET /api/archive/:id` — retrieve full artifact.
+- `DELETE /api/archive/:id` — **admin only**, writes a `system_logs` INFO audit entry before deleting.
+
+### FR-07 — Public dashboard (`routes/publicDashboard.js`)
+- `GET /` — no auth. Shows the latest `idfs_datasets` row **where `public_released=1`** per instrument (3 cards: ELS/IMA/NPD), with last-updated timestamp.
+
+### FR-08/08a — Science-team access (`routes/scienceTeam.js`, `services/auth.js`)
+- `POST /api/auth/login` — `{ username, password }`, bcrypt compare, creates session. Rate-limited (see NFR-1).
+- `GET /science/dashboard` — session-gated middleware; shows **full history**, all instruments, regardless of `public_released`.
+- `PATCH /api/datasets/:id/release` — admin only, sets `public_released=1` (this is the "until made public" gate in FR-08a).
+
+### FR-09 — Error handling (`middleware/errorHandler.js`, `routes/systemLog.js`)
+- Central Express error middleware: catches typed errors (`ValidationError`, `ProcessingError`, `AuthError`), maps to HTTP status, writes to `system_logs`, returns a consistent JSON error shape `{ code, message }`.
+- `GET /admin/logs` — admin-only view of `system_logs`, filterable by severity.
+
+### NFR APAF-PR-01 — Security (`services/auth.js`, `middleware/rateLimit.js`)
+- `bcrypt` hash cost factor 12 for `users.password_hash`.
+- `express-session` with `httpOnly`, `secure` (in prod), `sameSite: 'strict'` cookies.
+- `express-rate-limit` on `/api/auth/login` (e.g., 5 attempts / 10 min) — failed attempts logged as `ERR_AUTH_FAILED` (ties into FR-09 too).
+- No secrets hardcoded — read from `.env` (this is what SonarQube's Security Hotspots should come back clean on, or flag if missed).
+
+### NFR APAF-DR-01a — Timeliness (`services/metrics.js`)
+- Every `idfs_datasets` row stores `processing_started_at`/`processing_completed_at`.
+- `GET /api/metrics/latency` — returns average/max latency per instrument.
+- Config: `SCALED_SLA_MS` env var (e.g., `5000`) representing the scaled-down 24h requirement. Log a `WARNING` to `system_logs` if any dataset exceeds it.
+- **This NFR is evaluated by a targeted test + log inspection, not SonarQube** — state this limitation explicitly in the report.
+
+### NFR APAF-DR-02a — Compliance (`schemas/idfs-schema.json`, `services/schemaValidator.js`)
+- Define one ajv JSON schema per instrument describing required fields/types (your own "PDS-compliant form" definition).
+- Every dataset is validated against it inside FR-02 before being archived; failures become `ERR_PROCESSING_FAILED` in `system_logs`.
+- **State clearly in the report:** conformance is to your own defined schema, not real NASA PDS certification — the SRS gives no in-scope threshold for this project.
+
+---
+
+## 4. Development Phases (for the coding agent)
+
+Work in order. Each phase should be committed separately; **Phase 6 is the frozen baseline** used for SonarQube + testing evidence — do not keep changing FR/NFR behavior after that commit.
+
+### Phase 0 — Bootstrap
+- `npm init`, install: `express`, `better-sqlite3`, `bcrypt`, `express-session`, `express-rate-limit`, `ajv`, `ejs`, `dotenv`, `jest`, `supertest`.
+- Folder structure exactly as in the tree below.
+- `.env.example` with `PORT`, `SESSION_SECRET`, `SCALED_SLA_MS`.
+- **Done when:** `npm start` serves a blank Express app on `PORT`.
+
+```
+apaf-lite/
+├── src/
+│   ├── models/
+│   ├── routes/
+│   ├── services/
+│   ├── middleware/
+│   ├── schemas/idfs-schema.json
+│   ├── db/schema.sql, seed.js
+│   └── views/
+├── tests/
+├── sonar-project.properties
+└── package.json
+```
+
+### Phase 1 — Data layer
+- Create `db/schema.sql` (Section 2 above), a `db/init.js` that runs it against a local SQLite file on startup if tables don't exist.
+- `db/seed.js` — creates one `ADMIN` and one `SCIENCE_TEAM` user (bcrypt-hashed passwords from env/seed values).
+- **Done when:** running the seed script produces a queryable `apaf.db` with all 6 tables and 2 users.
+
+### Phase 2 — Ingestion (FR-01) + error handling skeleton (FR-09)
+- Implement `routes/ingestion.js`, `services/telemetryValidator.js`, `middleware/errorHandler.js`, `system_logs` writes.
+- **Done when:** `POST /api/telemetry/ingest` with a valid ELS packet returns 201 and a row in `telemetry_packets`; an invalid packet returns 400 with a logged `ERR_INVALID_PACKET`.
+
+### Phase 3 — Cleanup / intermediate files (FR-04)
+- Implement `services/cleanupService.js` per the logic in Section 3.
+- **Done when:** an uncleaned valid packet produces an `intermediate_files` row and flips the packet to `CLEANED`; the deliberately-unrecoverable NPD case produces a `BLOCKED` intermediate file and packet status.
+
+### Phase 4 — Processing / IDFS generation (FR-02)
+- Implement `services/idfsProcessor.js` with `processELS`, `processIMA`, `processNPD`.
+- **Deliberate NPD gap (for an honest FAILED test):** implement `processNPD` so it does not correctly handle a negative or out-of-range `hydrogenFlux` value (e.g., it stores it as-is instead of rejecting/normalizing it) — this must be a real, undocumented-until-tested gap in your code, not a fake test result. Do not fix this until after the frozen baseline is scanned and tested.
+- Implement `schemas/idfs-schema.json` + `services/schemaValidator.js`, wire into the processing flow (NFR APAF-DR-02a).
+- **Done when:** ELS and IMA packets process end-to-end into valid `idfs_datasets` rows; IMA rejects `amuPerQ` outside `[1, 1e6]`; NPD processes but with the known unhandled edge case still present.
+
+### Phase 5 — Archive (FR-05/06/06a)
+- Implement `services/archiveService.js` (checksum + insert), wire calls into ingestion/cleanup/processing.
+- Implement `routes/archive.js` (`GET /api/archive`, `GET /api/archive/:id`, `DELETE /api/archive/:id`).
+- **Done when:** every successful ingest/cleanup/process call produces a corresponding `archive_records` row, and the archive can be searched/filtered.
+
+### Phase 6 — Auth (NFR-1) + Science-team dashboard (FR-08/08a) + Public dashboard (FR-07)
+- Implement `services/auth.js`, `middleware/requireAuth.js`, `middleware/rateLimit.js`, `routes/scienceTeam.js`, `routes/publicDashboard.js`.
+- Views: `views/public/dashboard.ejs`, `views/science/dashboard.ejs`, `views/science/login.ejs`.
+- Add `PATCH /api/datasets/:id/release` (admin only).
+- **Done when:** an unauthenticated user cannot reach `/science/dashboard`; a logged-in science-team user sees all datasets (released or not); the public `/` only shows released datasets.
+
+> **🔒 Freeze the baseline here.** Tag/commit as `v1.0-baseline`. This is what gets scanned by SonarQube and tested in Part 3. No further FR/NFR behavior changes until evidence collection is done.
+
+### Phase 7 — Timeliness metrics (NFR APAF-DR-01a)
+- Implement `services/metrics.js`, `GET /api/metrics/latency`, the `SCALED_SLA_MS` warning log.
+- *(If you want this NFR's timestamps present in the frozen baseline for testing, do this before Phase 6's freeze instead — see note below.)*
+
+### Phase 8 — SonarQube
+- Add `sonar-project.properties`:
+  ```
+  sonar.projectKey=apaf-lite
+  sonar.sources=src
+  sonar.tests=tests
+  sonar.exclusions=node_modules/**
+  ```
+- Run a full scan against the **frozen baseline only**. Export/save the report (PDF or screenshots of Maintainability/Reliability/Security tabs + Quality Gate status).
+
+### Phase 9 — Test suite & manual test execution
+- `tests/` — jest + supertest for FR-01/02/04 happy paths and the IMA boundary case.
+- Execute the 12–15 test cases from Section 5 of the assignment plan manually against the running app; record actual results, screenshots, and status (PASSED/FAILED/BLOCKED) in the report tables.
+
+### Phase 10 — Defect logging (Jira)
+- For every genuine FAILED/BLOCKED case, reproduce it against the frozen baseline, then log it in Jira with: title, environment/build (`v1.0-baseline`), preconditions, repro steps, expected/actual result, severity, priority, evidence, linked test-case ID.
+
+> **Note on Phase 7 timing:** if your instructor expects the 24h-SLA NFR to be testable against the exact frozen baseline, move Phase 7 to before the freeze point (i.e., merge it into Phase 6). Doing it after is fine too as long as you re-freeze and re-scan once it's in — just be consistent and state in your report exactly what was in the evaluated baseline.
+
+---
+
+## 5. Test-Case Plan
+
+| Category | Min required | Example |
+|---|---|---|
+| Boundary (2+) | 2 | IMA `amuPerQ` at exactly `1` and exactly `1e6`; telemetry packet at max accepted payload size |
+| Invalid/error (2+) | 2 | Malformed packet (missing header field) → 400 `ERR_INVALID_PACKET`; wrong science-team password → 401 `ERR_AUTH_FAILED` |
+| Manual system-level (3+) | 3 | Ingest → process → confirm ELS appears on public dashboard after release toggle; login as science team → view unreleased dataset; ingest uncleaned packet → confirm intermediate file auto-generates |
+| Genuine FAILED/BLOCKED (2+) | 2 | NPD negative-flux edge case → genuine FAILED (actual ≠ expected); NPD uncleaned + corrupt payload → genuine BLOCKED (cleanup can't recover, processing never runs) |
+
+### Instrument × FR test mapping
+
+| FR | ELS | IMA | NPD |
+|---|---|---|---|
+| FR-01 (ingest) | Valid packet, normal path | Valid packet, normal path | Missing header → invalid/error case |
+| FR-02 (process → IDFS) | Normal transform | Boundary: `amuPerQ` = 1e6 | Negative flux → genuine FAILED |
+| FR-04 (intermediate file) | N/A (pre-cleaned) | Uncleaned → intermediate file generated | Uncleaned + corrupt → BLOCKED |
+
+---
+
+## 6. NFR Evaluation Summary
+
+| NFR | SonarQube evidence | Other method | Limitation to state in report |
+|---|---|---|---|
+| APAF-PR-01 (Security) | Security rating, hotspots (secrets, injection) | Inspect bcrypt cost factor + session cookie flags | — |
+| APAF-DR-01a (Timeliness) | N/A | `GET /api/metrics/latency` + `system_logs` warnings vs `SCALED_SLA_MS` | Real 24h SLA scaled down for test environment |
+| APAF-DR-02a (Compliance) | N/A | ajv schema validation results in processing logs | Compliance = our own schema, not real NASA PDS certification |
+
+---
+
+## 7. SonarQube & Jira Notes
+
+- Scan the **entire repo** only after the Phase 6 freeze — never partial files.
+- Expect (and it's fine to report) findings on: unvalidated upload size limits, duplicated per-instrument transform boilerplate, and any hardcoded values in `services/auth.js` or `.env.example` accidentally committed.
+- Tag every Jira defect with the relevant requirement ID (e.g., `APAF-FR-04`, `APAF-FR-02`) as a label/component so the Table C traceability record is a direct lookup.
