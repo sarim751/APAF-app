@@ -54,8 +54,15 @@
       transition: all 0.2s;
     }
     .btn:hover { background: #273549; }
-    .btn-release {
+    .btn-primary {
       background: var(--accent);
+      color: #0f172a;
+      font-weight: 600;
+      border: none;
+    }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-release {
+      background: var(--success);
       color: #0f172a;
       font-weight: 600;
       border: none;
@@ -69,6 +76,50 @@
     }
     .badge-released { background: rgba(34, 197, 94, 0.2); color: var(--success); border: 1px solid rgba(34, 197, 94, 0.4); }
     .badge-restricted { background: rgba(234, 179, 8, 0.2); color: var(--warning); border: 1px solid rgba(234, 179, 8, 0.4); }
+    
+    /* Ingestion Panel */
+    .ingest-box {
+      background: #131d31;
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .ingest-box h3 {
+      font-size: 1.15rem;
+      color: var(--accent);
+      margin-bottom: 0.5rem;
+    }
+    .template-bar {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .template-btn {
+      padding: 0.35rem 0.75rem;
+      font-size: 0.8rem;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--card-bg);
+      color: var(--text);
+      cursor: pointer;
+    }
+    .template-btn:hover { border-color: var(--accent); }
+    textarea.json-input {
+      width: 100%;
+      height: 160px;
+      font-family: monospace;
+      font-size: 0.85rem;
+      background: #0b1120;
+      color: #7dd3fc;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 0.75rem;
+      resize: vertical;
+    }
+    textarea.json-input:focus { outline: none; border-color: var(--accent); }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -102,6 +153,12 @@
       max-height: 120px;
       overflow-y: auto;
     }
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 1.5rem;
+    }
   </style>
 </head>
 <body>
@@ -122,10 +179,34 @@
     </header>
 
     <main>
-      <h2>IDFS Data Sets (All <%= datasets.length %> Records)</h2>
+      <!-- Telemetry Ingestion Panel -->
+      <div class="ingest-box" id="ingestPanel">
+        <h3>➕ Ingest New Telemetry Dataset</h3>
+        <p style="color: var(--muted); font-size: 0.85rem; margin-bottom: 1rem;">
+          Select an instrument template below, customize the payload if desired, and submit to the automated APAF pipeline.
+        </p>
+
+        <div class="template-bar">
+          <button type="button" class="template-btn" onclick="loadTemplate('ELS')">📄 Template: ELS</button>
+          <button type="button" class="template-btn" onclick="loadTemplate('IMA')">📄 Template: IMA</button>
+          <button type="button" class="template-btn" onclick="loadTemplate('NPD')">📄 Template: NPD</button>
+          <button type="button" class="template-btn" onclick="loadTemplate('UNCLEANED')">⚠️ Template: Uncleaned (FR-04 Cleanup)</button>
+        </div>
+
+        <textarea id="telemetryJson" class="json-input" placeholder="Paste or edit telemetry packet JSON here..."></textarea>
+
+        <div style="margin-top: 1rem; display: flex; justify-content: flex-end; gap: 0.75rem;">
+          <button type="button" class="btn btn-primary" onclick="submitTelemetry()">🚀 Submit to Ingestion Pipeline</button>
+        </div>
+      </div>
+
+      <div class="section-header">
+        <h2>IDFS Data Sets (All <%= datasets.length %> Records)</h2>
+      </div>
+
       <% if (datasets.length === 0) { %>
         <div style="background: var(--card-bg); padding: 2rem; border-radius: 8px; margin-top: 1rem; text-align: center; color: var(--muted);">
-          No datasets processed yet. Ingest telemetry packets via <code>POST /api/telemetry/ingest</code> to begin.
+          No datasets processed yet. Use the ingestion form above to add a dataset.
         </div>
       <% } else { %>
         <table>
@@ -175,6 +256,94 @@
   </div>
 
   <script>
+    const templates = {
+      ELS: {
+        packetId: "PKT-ELS-" + Math.floor(1000 + Math.random() * 9000),
+        source: "ASPERA-3",
+        instrument: "ELS",
+        cleaned: 1,
+        payload: {
+          energyRange: 550,
+          electronFlux: 28400,
+          timestamp: new Date().toISOString()
+        }
+      },
+      IMA: {
+        packetId: "PKT-IMA-" + Math.floor(1000 + Math.random() * 9000),
+        source: "ASPERA-3",
+        instrument: "IMA",
+        cleaned: 1,
+        payload: {
+          mass: 16,
+          energy: 420,
+          angle: 15,
+          amuPerQ: 16,
+          ionFlux: 9100
+        }
+      },
+      NPD: {
+        packetId: "PKT-NPD-" + Math.floor(1000 + Math.random() * 9000),
+        source: "ASPERA-3",
+        instrument: "NPD",
+        cleaned: 1,
+        payload: {
+          hydrogenFlux: 1250,
+          oxygenFlux: 390,
+          energyRange: 320
+        }
+      },
+      UNCLEANED: {
+        packetId: "PKT-ELS-RAW-" + Math.floor(1000 + Math.random() * 9000),
+        source: "ASPERA-3",
+        instrument: "ELS",
+        cleaned: 0,
+        payload: {
+          rawEnergy: 620,
+          rawFlux: 18500
+        }
+      }
+    };
+
+    function loadTemplate(name) {
+      const template = templates[name];
+      if (template) {
+        // regenerate random ID each time loaded
+        template.packetId = "PKT-" + name + "-" + Math.floor(1000 + Math.random() * 9000);
+        document.getElementById('telemetryJson').value = JSON.stringify(template, null, 2);
+      }
+    }
+
+    // Default load ELS
+    loadTemplate('ELS');
+
+    async function submitTelemetry() {
+      const rawText = document.getElementById('telemetryJson').value.trim();
+      let body;
+      try {
+        body = JSON.parse(rawText);
+      } catch (err) {
+        alert('Invalid JSON: ' + err.message);
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/telemetry/ingest', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (res.ok) {
+          alert('Success! Telemetry packet ' + body.packetId + ' ingested and processed.');
+          window.location.reload();
+        } else {
+          alert('Ingestion Failed: ' + (data.message || 'Error occurred'));
+        }
+      } catch (err) {
+        alert('Network error connecting to ingestion endpoint.');
+      }
+    }
+
     async function releaseDataset(id) {
       if (!confirm('Release dataset #' + id + ' to the public dashboard?')) return;
       try {
