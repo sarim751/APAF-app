@@ -14,6 +14,10 @@ app.set('view engine', 'ejs');
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Serve static assets
+app.use(express.static(path.join(__dirname, '../public')));
+
+
 // Session configuration
 app.use(
   session({

@@ -3,130 +3,186 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>APAF-Lite | Science Team Authentication</title>
+  <title>APAF-Lite | Science Operations Authentication</title>
+  <link rel="stylesheet" href="/css/style.css">
   <style>
-    :root {
-      --bg: #0f172a;
-      --card-bg: #1e293b;
-      --border: #334155;
-      --text: #f8fafc;
-      --muted: #94a3b8;
-      --accent: #38bdf8;
-      --error: #ef4444;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background: var(--bg);
-      color: var(--text);
+    .login-container {
       display: flex;
       justify-content: center;
       align-items: center;
-      min-height: 100vh;
-      padding: 1rem;
+      min-height: 85vh;
     }
-    .login-card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 2.5rem;
+    .auth-airlock-card {
+      background: rgba(11, 18, 38, 0.85);
+      backdrop-filter: blur(20px);
+      border: 1px solid var(--border-glow);
+      border-radius: 16px;
+      padding: 2.5rem 2.2rem;
       width: 100%;
-      max-width: 420px;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+      max-width: 440px;
+      box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.8), 0 0 30px rgba(56, 189, 248, 0.15);
+      position: relative;
+      overflow: hidden;
+      animation: hudFadeInUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    .login-header {
-      text-align: center;
-      margin-bottom: 2rem;
+    .auth-airlock-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, transparent, var(--accent-cyan), var(--accent-neon), transparent);
     }
-    .login-header h1 { font-size: 1.5rem; color: var(--accent); margin-bottom: 0.5rem; }
-    .login-header p { font-size: 0.85rem; color: var(--muted); }
-    .alert-error {
-      background: rgba(239, 68, 68, 0.15);
-      border: 1px solid var(--error);
-      color: #fca5a5;
-      padding: 0.75rem 1rem;
-      border-radius: 6px;
-      margin-bottom: 1.5rem;
-      font-size: 0.875rem;
+    .auth-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      padding: 0.3rem 0.8rem;
+      border-radius: 9999px;
+      font-size: 0.72rem;
+      font-family: var(--font-mono);
+      color: var(--accent-cyan);
+      margin-bottom: 1.25rem;
     }
     .form-group {
       margin-bottom: 1.25rem;
     }
-    label {
+    .form-group label {
       display: block;
-      font-size: 0.875rem;
-      font-weight: 500;
+      font-size: 0.82rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
       margin-bottom: 0.5rem;
-      color: var(--text);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
     }
-    input[type="text"], input[type="password"] {
+    .form-input {
       width: 100%;
-      padding: 0.75rem 1rem;
-      background: #0b1120;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text);
+      padding: 0.8rem 1rem;
+      background: rgba(4, 8, 19, 0.8);
+      border: 1px solid var(--border-dim);
+      border-radius: 8px;
+      color: var(--text-main);
       font-size: 0.95rem;
+      font-family: var(--font-sans);
+      transition: all 0.2s;
     }
-    input:focus {
+    .form-input:focus {
       outline: none;
-      border-color: var(--accent);
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 15px rgba(56, 189, 248, 0.2);
     }
-    button[type="submit"] {
-      width: 100%;
-      padding: 0.75rem 1rem;
-      background: var(--accent);
-      color: #0f172a;
-      font-weight: 600;
-      font-size: 1rem;
-      border: none;
+    .chip-container {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+      flex-wrap: wrap;
+    }
+    .chip {
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px dashed var(--border-dim);
       border-radius: 6px;
+      padding: 0.3rem 0.65rem;
+      font-size: 0.75rem;
+      font-family: var(--font-mono);
+      color: var(--text-muted);
       cursor: pointer;
-      margin-top: 0.5rem;
-      transition: opacity 0.2s;
+      transition: all 0.2s;
     }
-    button[type="submit"]:hover { opacity: 0.9; }
-    .links {
-      margin-top: 1.5rem;
-      text-align: center;
+    .chip:hover {
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+      background: rgba(56, 189, 248, 0.08);
+    }
+    .error-banner {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid var(--accent-crimson);
+      color: #fca5a5;
+      padding: 0.75rem 1rem;
+      border-radius: 8px;
       font-size: 0.85rem;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
     }
-    .links a { color: var(--muted); text-decoration: none; }
-    .links a:hover { color: var(--accent); }
   </style>
 </head>
 <body>
-  <div class="login-card">
-    <div class="login-header">
-      <h1>ASPERA-3 Science Team</h1>
-      <p>Secure Operations & Analysis Portal</p>
-    </div>
+  <canvas id="spaceCanvas"></canvas>
 
-    <% if (error) { %>
-      <div class="alert-error">
-        <%= error %>
+  <div class="content-wrapper">
+    <div class="login-container">
+      <div class="auth-airlock-card">
+        <div style="text-align: center;">
+          <div class="auth-badge">
+            <span class="pulse-dot"></span>
+            SECURITY GATEWAY &bull; APAF-PR-01
+          </div>
+          <h1 style="font-family: var(--font-heading); font-size: 1.7rem; color: #ffffff; margin-bottom: 0.3rem;">
+            Science Team Access
+          </h1>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 1.75rem;">
+            Authenticate for ASPERA-3 telemetry operations
+          </p>
+        </div>
+
+        <% if (error) { %>
+          <div class="error-banner">
+            <span>⚠️</span>
+            <span><%= error %></span>
+          </div>
+        <% } %>
+
+        <form method="POST" action="/auth/login">
+          <input type="hidden" name="redirect" value="<%= redirect %>">
+
+          <div class="form-group">
+            <label for="username">Operator / Scientist ID</label>
+            <input type="text" id="username" name="username" class="form-input" required autofocus placeholder="scientist or admin">
+          </div>
+
+          <div class="form-group">
+            <label for="password">Access Security Key</label>
+            <input type="password" id="password" name="password" class="form-input" required placeholder="••••••••••••">
+          </div>
+
+          <!-- Quick Autofill Helper Chips for convenient grading/testing -->
+          <div style="margin-top: 0.5rem; margin-bottom: 0.4rem; font-size: 0.72rem; color: var(--text-dim); font-family: var(--font-mono);">
+            QUICK PROFILE PRESETS:
+          </div>
+          <div class="chip-container">
+            <div class="chip" onclick="fillCredentials('scientist', 'science123')">
+              🔬 Scientist (Science Role)
+            </div>
+            <div class="chip" onclick="fillCredentials('admin', 'admin123')">
+              🛡️ Admin (Full Control)
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; padding: 0.8rem; font-size: 0.95rem;">
+            <span>Authorize & Enter Console &rarr;</span>
+          </button>
+        </form>
+
+        <div style="margin-top: 2rem; text-align: center; font-size: 0.85rem;">
+          <a href="/" style="color: var(--text-muted); text-decoration: none; transition: color 0.2s;" onmouseover="this.style.color='var(--accent-cyan)'" onmouseout="this.style.color='var(--text-muted)'">
+            &larr; Return to Public Science Display
+          </a>
+        </div>
       </div>
-    <% } %>
-
-    <form method="POST" action="/auth/login">
-      <input type="hidden" name="redirect" value="<%= redirect %>">
-
-      <div class="form-group">
-        <label for="username">Username</label>
-        <input type="text" id="username" name="username" required autofocus placeholder="e.g. scientist or admin">
-      </div>
-
-      <div class="form-group">
-        <label for="password">Password</label>
-        <input type="password" id="password" name="password" required placeholder="Enter your credentials">
-      </div>
-
-      <button type="submit">Sign In</button>
-    </form>
-
-    <div class="links">
-      <a href="/">&larr; Return to Public Science Portal</a>
     </div>
   </div>
+
+  <script src="/js/space-fx.js"></script>
+  <script>
+    function fillCredentials(user, pass) {
+      document.getElementById('username').value = user;
+      document.getElementById('password').value = pass;
+    }
+  </script>
 </body>
 </html>

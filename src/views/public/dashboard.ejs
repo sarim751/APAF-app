@@ -4,208 +4,367 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>APAF-Lite | ASPERA-3 Public Science Portal</title>
-  <style>
-    :root {
-      --bg: #0f172a;
-      --card-bg: #1e293b;
-      --border: #334155;
-      --text: #f8fafc;
-      --muted: #94a3b8;
-      --accent: #38bdf8;
-      --success: #22c55e;
-      --warning: #eab308;
-    }
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.6;
-      padding: 2rem 1rem;
-    }
-    .container { max-width: 1100px; margin: 0 auto; }
-    header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 2.5rem;
-      padding-bottom: 1.5rem;
-      border-bottom: 1px solid var(--border);
-    }
-    .title-group h1 { font-size: 1.75rem; font-weight: 700; color: var(--accent); }
-    .title-group p { color: var(--muted); font-size: 0.9rem; margin-top: 0.25rem; }
-    .nav-links a {
-      display: inline-block;
-      padding: 0.5rem 1rem;
-      background: var(--card-bg);
-      color: var(--text);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      text-decoration: none;
-      font-size: 0.875rem;
-      transition: all 0.2s;
-    }
-    .nav-links a:hover { background: #273549; border-color: var(--accent); }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 1.5rem;
-    }
-    .card {
-      background: var(--card-bg);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 1.5rem;
-      display: flex;
-      flex-direction: column;
-    }
-    .card-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 1rem;
-      padding-bottom: 0.75rem;
-      border-bottom: 1px solid var(--border);
-    }
-    .card-header h2 { font-size: 1.25rem; }
-    .badge {
-      font-size: 0.75rem;
-      padding: 0.25rem 0.6rem;
-      border-radius: 9999px;
-      font-weight: 600;
-    }
-    .badge-live { background: rgba(34, 197, 94, 0.2); color: var(--success); border: 1px solid rgba(34, 197, 94, 0.4); }
-    .badge-none { background: rgba(148, 163, 184, 0.2); color: var(--muted); border: 1px solid rgba(148, 163, 184, 0.3); }
-    .data-box {
-      background: #0b1120;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      padding: 1rem;
-      font-family: monospace;
-      font-size: 0.85rem;
-      overflow-x: auto;
-      margin: 1rem 0;
-      flex-grow: 1;
-    }
-    .meta-row {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.8rem;
-      color: var(--muted);
-      margin-top: 0.5rem;
-    }
-    footer {
-      margin-top: 3rem;
-      text-align: center;
-      font-size: 0.8rem;
-      color: var(--muted);
-      border-top: 1px solid var(--border);
-      padding-top: 1.5rem;
-    }
-  </style>
+  <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-  <div class="container">
+  <canvas id="spaceCanvas"></canvas>
+
+  <div class="content-wrapper">
+    <!-- Top Telemetry Status Ticker -->
+    <div class="mission-status-bar">
+      <div class="mission-indicator">
+        <span class="pulse-dot"></span>
+        <span>ESA / ESOC LINK: <strong style="color: var(--accent-emerald);">NOMINAL (ONLINE)</strong></span>
+      </div>
+      <div class="mission-clocks">
+        <span id="marsSol">MEX ORBIT #23842</span>
+        <span id="utcClock">UTC --:--:--</span>
+      </div>
+    </div>
+
+    <!-- Header -->
     <header>
       <div class="title-group">
         <h1>ASPERA-3 / Mars Express Public Science Portal</h1>
-        <p>APAF-Lite — Automated Processing & Archiving Facility</p>
+        <p>
+          <span style="color: var(--accent-cyan); font-weight: 600;">APAF-Lite</span>
+          &bull; Automated Ground Data Reduction & Archiving Facility
+        </p>
       </div>
-      <div class="nav-links">
+      <div class="nav-cluster">
         <% if (user) { %>
-          <a href="/science/dashboard">Science Dashboard (<%= user.username %>)</a>
-          <a href="/auth/logout">Logout</a>
+          <a href="/science/dashboard" class="btn btn-primary">
+            <span>🔬 Science Operations</span>
+            <span style="opacity: 0.8; font-size: 0.8em;">(<%= user.username %>)</span>
+          </a>
+          <a href="/auth/logout" class="btn">Sign Out</a>
         <% } else { %>
-          <a href="/auth/login">Science Team Login &rarr;</a>
+          <a href="/auth/login" class="btn btn-primary">
+            <span>🔐 Science Team Access &rarr;</span>
+          </a>
         <% } %>
       </div>
     </header>
 
+    <!-- Main Instrument Display -->
     <main>
       <div class="grid">
         <!-- ELS Card -->
-        <div class="card" id="card-els">
+        <div class="hud-card" id="card-els">
           <div class="card-header">
-            <h2>ELS (Electron Spectrometer)</h2>
+            <div>
+              <h2>ELS (Electron Spectrometer)</h2>
+              <div style="font-size: 0.75rem; color: var(--text-dim); font-family: var(--font-mono);">SENSOR CH-01</div>
+            </div>
             <% if (instruments.ELS) { %>
-              <span class="badge badge-live">RELEASED</span>
+              <span class="badge badge-live">● RELEASED</span>
             <% } else { %>
-              <span class="badge badge-none">NO RELEASED DATA</span>
+              <span class="badge badge-none">PENDING RELEASE</span>
             <% } %>
           </div>
-          <p style="color: var(--muted); font-size: 0.85rem;">Measures solar wind and ionospheric electron flux.</p>
-          <% if (instruments.ELS) { %>
-            <div class="data-box">
-              <pre><%= JSON.stringify(instruments.ELS.data_json, null, 2) %></pre>
+
+          <p class="instrument-desc">Measures solar wind plasma and Martian ionospheric electron flux spectrum.</p>
+
+          <% if (instruments.ELS) { 
+               const flux = instruments.ELS.data_json.electronFlux || 0;
+               const energy = instruments.ELS.data_json.energyRange || 0;
+               const fluxPct = Math.min(Math.max((flux / 40000) * 100, 8), 100);
+               const energyPct = Math.min(Math.max((energy / 1000) * 100, 8), 100);
+          %>
+            <!-- Visual Telemetry Gauges -->
+            <div class="telemetry-gauge-box">
+              <div class="gauge-row">
+                <div class="gauge-label">
+                  <span>ELECTRON FLUX (e⁻/cm²·s)</span>
+                  <span style="color: var(--accent-cyan); font-weight: 600;"><%= Number(flux).toLocaleString() %></span>
+                </div>
+                <div class="gauge-track">
+                  <div class="gauge-fill" style="width: <%= fluxPct %>%;"></div>
+                </div>
+              </div>
+
+              <div class="gauge-row" style="margin-top: 0.85rem;">
+                <div class="gauge-label">
+                  <span>ENERGY RANGE (eV)</span>
+                  <span style="color: var(--accent-cyan); font-weight: 600;"><%= energy %> eV</span>
+                </div>
+                <div class="gauge-track">
+                  <div class="gauge-fill" style="width: <%= energyPct %>%;"></div>
+                </div>
+              </div>
             </div>
-            <div class="meta-row">
-              <span>Dataset ID: #<%= instruments.ELS.id %></span>
-              <span>Updated: <%= new Date(instruments.ELS.created_at).toLocaleString() %></span>
+
+            <!-- Stylish Scientific Parameter Tiles -->
+            <div class="metric-tiles-grid">
+              <div class="metric-tile">
+                <span class="metric-tile-title">Electron Flux</span>
+                <span class="metric-tile-value">
+                  <%= Number(flux).toLocaleString() %>
+                  <span class="metric-tile-unit">e⁻/cm²·s</span>
+                </span>
+              </div>
+              <div class="metric-tile">
+                <span class="metric-tile-title">Energy Range</span>
+                <span class="metric-tile-value">
+                  <%= energy %>
+                  <span class="metric-tile-unit">eV</span>
+                </span>
+              </div>
+              <div class="metric-tile">
+                <span class="metric-tile-title">Coverage</span>
+                <span class="metric-tile-value" style="font-size: 0.95rem; color: #a5f3fc;">
+                  4π Steradian
+                </span>
+              </div>
+              <div class="metric-tile">
+                <span class="metric-tile-title">Dataset ID</span>
+                <span class="metric-tile-value" style="font-size: 0.95rem; color: var(--accent-cyan);">
+                  #<%= instruments.ELS.id %>
+                </span>
+              </div>
+            </div>
+
+            <!-- Discreet Collapsible Raw Frame Drawer -->
+            <button type="button" class="raw-drawer-trigger" onclick="toggleRawDrawer('els')">
+              <span>&lt;/&gt; Raw IDFS Telemetry JSON</span>
+              <span id="arrow-els">&#9662;</span>
+            </button>
+            <div class="raw-drawer-content" id="drawer-els">
+              <div class="code-viewer">
+                <pre><%= JSON.stringify(instruments.ELS.data_json, null, 2) %></pre>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono); margin-top: 0.5rem;">
+              <span>IDFS REF: #<%= instruments.ELS.id %></span>
+              <span>ACQUIRED: <%= new Date(instruments.ELS.created_at).toLocaleDateString() %></span>
             </div>
           <% } else { %>
-            <div class="data-box" style="color: var(--muted); font-style: italic;">
-              Pending science team evaluation & release approval.
+            <div class="telemetry-gauge-box" style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted); font-style: italic;">
+              Telemetry received. Waiting for Science Team validation & release approval.
             </div>
           <% } %>
         </div>
 
         <!-- IMA Card -->
-        <div class="card" id="card-ima">
+        <div class="hud-card" id="card-ima">
           <div class="card-header">
-            <h2>IMA (Ion Mass Analyzer)</h2>
+            <div>
+              <h2>IMA (Ion Mass Analyzer)</h2>
+              <div style="font-size: 0.75rem; color: var(--text-dim); font-family: var(--font-mono);">SENSOR CH-02</div>
+            </div>
             <% if (instruments.IMA) { %>
-              <span class="badge badge-live">RELEASED</span>
+              <span class="badge badge-live">● RELEASED</span>
             <% } else { %>
-              <span class="badge badge-none">NO RELEASED DATA</span>
+              <span class="badge badge-none">PENDING RELEASE</span>
             <% } %>
           </div>
-          <p style="color: var(--muted); font-size: 0.85rem;">Measures ion mass-composition, energy, and sensor angles.</p>
-          <% if (instruments.IMA) { %>
-            <div class="data-box">
-              <pre><%= JSON.stringify(instruments.IMA.data_json, null, 2) %></pre>
+
+          <p class="instrument-desc">Measures ion mass-composition, energy distribution, and 3D arrival angles.</p>
+
+          <% if (instruments.IMA) { 
+               const ionFlux = instruments.IMA.data_json.ionFlux || 0;
+               const amu = instruments.IMA.data_json.amuPerQ || 1;
+               const angle = instruments.IMA.data_json.angle || 0;
+               const energy = instruments.IMA.data_json.energy || 100;
+               const amuLogPct = Math.min(Math.max((Math.log10(amu + 1) / 6) * 100, 10), 100);
+               const ionFluxPct = Math.min(Math.max((ionFlux / 15000) * 100, 10), 100);
+          %>
+            <!-- Visual Telemetry Gauges -->
+            <div class="telemetry-gauge-box">
+              <div class="gauge-row">
+                <div class="gauge-label">
+                  <span>ION FLUX / INTENSITY</span>
+                  <span style="color: var(--accent-amber); font-weight: 600;"><%= Number(ionFlux).toLocaleString() %> ions/s</span>
+                </div>
+                <div class="gauge-track">
+                  <div class="gauge-fill gauge-fill-amber" style="width: <%= ionFluxPct %>%;"></div>
+                </div>
+              </div>
+
+              <div class="gauge-row" style="margin-top: 0.85rem;">
+                <div class="gauge-label">
+                  <span>MASS-TO-CHARGE RATIO (amu/q)</span>
+                  <span style="color: var(--accent-amber); font-weight: 600;"><%= amu %> amu/q</span>
+                </div>
+                <div class="gauge-track">
+                  <div class="gauge-fill gauge-fill-amber" style="width: <%= amuLogPct %>%;"></div>
+                </div>
+              </div>
             </div>
-            <div class="meta-row">
-              <span>Dataset ID: #<%= instruments.IMA.id %></span>
-              <span>Updated: <%= new Date(instruments.IMA.created_at).toLocaleString() %></span>
+
+            <!-- Stylish Scientific Parameter Tiles -->
+            <div class="metric-tiles-grid">
+              <div class="metric-tile">
+                <span class="metric-tile-title">Mass-to-Charge</span>
+                <span class="metric-tile-value" style="color: #fde047;">
+                  <%= amu %>
+                  <span class="metric-tile-unit" style="color: var(--accent-amber);">amu/q</span>
+                </span>
+              </div>
+              <div class="metric-tile">
+                <span class="metric-tile-title">Ion Flux</span>
+                <span class="metric-tile-value" style="color: #fde047;">
+                  <%= Number(ionFlux).toLocaleString() %>
+                  <span class="metric-tile-unit" style="color: var(--accent-amber);">ions/s</span>
+                </span>
+              </div>
+              <div class="metric-tile">
+                <span class="metric-tile-title">Ion Energy</span>
+                <span class="metric-tile-value">
+                  <%= energy %>
+                  <span class="metric-tile-unit">eV</span>
+                </span>
+              </div>
+              <div class="metric-tile">
+                <span class="metric-tile-title">Sensor Angle</span>
+                <span class="metric-tile-value">
+                  <%= angle %>°
+                  <span class="metric-tile-unit">Elevation</span>
+                </span>
+              </div>
+            </div>
+
+            <!-- Discreet Collapsible Raw Frame Drawer -->
+            <button type="button" class="raw-drawer-trigger" onclick="toggleRawDrawer('ima')">
+              <span>&lt;/&gt; Raw IDFS Telemetry JSON</span>
+              <span id="arrow-ima">&#9662;</span>
+            </button>
+            <div class="raw-drawer-content" id="drawer-ima">
+              <div class="code-viewer">
+                <pre><%= JSON.stringify(instruments.IMA.data_json, null, 2) %></pre>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono); margin-top: 0.5rem;">
+              <span>IDFS REF: #<%= instruments.IMA.id %></span>
+              <span>ACQUIRED: <%= new Date(instruments.IMA.created_at).toLocaleDateString() %></span>
             </div>
           <% } else { %>
-            <div class="data-box" style="color: var(--muted); font-style: italic;">
-              Pending science team evaluation & release approval.
+            <div class="telemetry-gauge-box" style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted); font-style: italic;">
+              Telemetry received. Waiting for Science Team validation & release approval.
             </div>
           <% } %>
         </div>
 
         <!-- NPD Card -->
-        <div class="card" id="card-npd">
+        <div class="hud-card" id="card-npd">
           <div class="card-header">
-            <h2>NPD (Neutral Particle Detector)</h2>
+            <div>
+              <h2>NPD (Neutral Particle Detector)</h2>
+              <div style="font-size: 0.75rem; color: var(--text-dim); font-family: var(--font-mono);">SENSOR CH-03</div>
+            </div>
             <% if (instruments.NPD) { %>
-              <span class="badge badge-live">RELEASED</span>
+              <span class="badge badge-live">● RELEASED</span>
             <% } else { %>
-              <span class="badge badge-none">NO RELEASED DATA</span>
+              <span class="badge badge-none">PENDING RELEASE</span>
             <% } %>
           </div>
-          <p style="color: var(--muted); font-size: 0.85rem;">Measures energetic neutral hydrogen and oxygen atoms.</p>
-          <% if (instruments.NPD) { %>
-            <div class="data-box">
-              <pre><%= JSON.stringify(instruments.NPD.data_json, null, 2) %></pre>
+
+          <p class="instrument-desc">Measures energetic neutral hydrogen (ENA-H) and oxygen (ENA-O) atom flux.</p>
+
+          <% if (instruments.NPD) { 
+               const hFlux = instruments.NPD.data_json.hydrogenFlux || 0;
+               const oFlux = instruments.NPD.data_json.oxygenFlux || 0;
+               const energy = instruments.NPD.data_json.energyRange || 300;
+               const hPct = Math.min(Math.max((hFlux / 3000) * 100, 8), 100);
+               const oPct = Math.min(Math.max((oFlux / 1000) * 100, 8), 100);
+          %>
+            <!-- Visual Telemetry Gauges -->
+            <div class="telemetry-gauge-box">
+              <div class="gauge-row">
+                <div class="gauge-label">
+                  <span>HYDROGEN ATOM FLUX (H-ENA)</span>
+                  <span style="color: var(--accent-mars); font-weight: 600;"><%= Number(hFlux).toLocaleString() %></span>
+                </div>
+                <div class="gauge-track">
+                  <div class="gauge-fill gauge-fill-mars" style="width: <%= hPct %>%;"></div>
+                </div>
+              </div>
+
+              <div class="gauge-row" style="margin-top: 0.85rem;">
+                <div class="gauge-label">
+                  <span>OXYGEN ATOM FLUX (O-ENA)</span>
+                  <span style="color: var(--accent-mars); font-weight: 600;"><%= Number(oFlux).toLocaleString() %></span>
+                </div>
+                <div class="gauge-track">
+                  <div class="gauge-fill gauge-fill-mars" style="width: <%= oPct %>%;"></div>
+                </div>
+              </div>
             </div>
-            <div class="meta-row">
-              <span>Dataset ID: #<%= instruments.NPD.id %></span>
-              <span>Updated: <%= new Date(instruments.NPD.created_at).toLocaleString() %></span>
+
+            <!-- Stylish Scientific Parameter Tiles -->
+            <div class="metric-tiles-grid">
+              <div class="metric-tile">
+                <span class="metric-tile-title">Hydrogen Flux</span>
+                <span class="metric-tile-value" style="color: #fb923c;">
+                  <%= Number(hFlux).toLocaleString() %>
+                  <span class="metric-tile-unit" style="color: var(--accent-mars);">atoms/s</span>
+                </span>
+              </div>
+              <div class="metric-tile">
+                <span class="metric-tile-title">Oxygen Flux</span>
+                <span class="metric-tile-value" style="color: #fb923c;">
+                  <%= Number(oFlux).toLocaleString() %>
+                  <span class="metric-tile-unit" style="color: var(--accent-mars);">atoms/s</span>
+                </span>
+              </div>
+              <div class="metric-tile">
+                <span class="metric-tile-title">Energy Band</span>
+                <span class="metric-tile-value">
+                  <%= energy %>
+                  <span class="metric-tile-unit">eV</span>
+                </span>
+              </div>
+              <div class="metric-tile">
+                <span class="metric-tile-title">Species Resolution</span>
+                <span class="metric-tile-value" style="font-size: 0.95rem; color: #fed7aa;">
+                  H / O Resolv.
+                </span>
+              </div>
+            </div>
+
+            <!-- Discreet Collapsible Raw Frame Drawer -->
+            <button type="button" class="raw-drawer-trigger" onclick="toggleRawDrawer('npd')">
+              <span>&lt;/&gt; Raw IDFS Telemetry JSON</span>
+              <span id="arrow-npd">&#9662;</span>
+            </button>
+            <div class="raw-drawer-content" id="drawer-npd">
+              <div class="code-viewer">
+                <pre><%= JSON.stringify(instruments.NPD.data_json, null, 2) %></pre>
+              </div>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; font-size: 0.78rem; color: var(--text-muted); font-family: var(--font-mono); margin-top: 0.5rem;">
+              <span>IDFS REF: #<%= instruments.NPD.id %></span>
+              <span>ACQUIRED: <%= new Date(instruments.NPD.created_at).toLocaleDateString() %></span>
             </div>
           <% } else { %>
-            <div class="data-box" style="color: var(--muted); font-style: italic;">
-              Pending science team evaluation & release approval.
+            <div class="telemetry-gauge-box" style="text-align: center; padding: 2.5rem 1rem; color: var(--text-muted); font-style: italic;">
+              Telemetry received. Waiting for Science Team validation & release approval.
             </div>
           <% } %>
         </div>
       </div>
     </main>
 
+    <!-- Footer -->
     <footer>
-      <p>ASPERA-3 Processing and Archiving Facility (APAF-Lite) &bull; Mars Express Science Operations</p>
+      <div>ASPERA-3 Processing and Archiving Facility (APAF-Lite) &bull; Southwest Research Institute &bull; IRF</div>
+      <div style="font-family: var(--font-mono); color: var(--accent-cyan);">MARS EXPRESS GROUND SEGMENT</div>
     </footer>
   </div>
+
+  <script src="/js/space-fx.js"></script>
+  <script>
+    function toggleRawDrawer(id) {
+      const drawer = document.getElementById('drawer-' + id);
+      const arrow = document.getElementById('arrow-' + id);
+      if (drawer) {
+        drawer.classList.toggle('open');
+        arrow.innerHTML = drawer.classList.contains('open') ? '&#9652;' : '&#9662;';
+      }
+    }
+  </script>
 </body>
 </html>
