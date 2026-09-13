@@ -199,16 +199,29 @@
             </div>
           </div>
 
-          <!-- Raw Uncleaned Template Card -->
+          <!-- Raw Uncleaned Recoverable Template Card (TC-08) -->
           <div class="template-card" id="card-tpl-UNCLEANED" onclick="selectTemplate('UNCLEANED')">
             <div class="template-card-header">
-              <div class="template-name" style="color: #fbbf24;">⚠️ Raw Uncleaned</div>
+              <div class="template-name" style="color: #fbbf24;">⚠️ Raw Recoverable (TC-08)</div>
               <span class="template-tag" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; border-color: rgba(245, 158, 11, 0.3);">FR-04</span>
             </div>
-            <div class="template-desc">Uncleaned frame (`cleaned: 0`). Auto-triggers intermediate recovery file!</div>
+            <div class="template-desc">Uncleaned ELS (`cleaned: 0`). Auto-triggers intermediate recovery file (Status OK)!</div>
             <div class="template-meta-row">
               <span style="color: #fbbf24;">Cleaned: 0 (RAW)</span>
               <span style="color: var(--text-dim);">Ground Recv</span>
+            </div>
+          </div>
+
+          <!-- Raw NPD Corrupt / Blocked Template Card (TC-09) -->
+          <div class="template-card" id="card-tpl-CORRUPT_NPD" onclick="selectTemplate('CORRUPT_NPD')">
+            <div class="template-card-header">
+              <div class="template-name" style="color: #ef4444;">🚫 Corrupt NPD (TC-09)</div>
+              <span class="template-tag" style="background: rgba(239, 68, 68, 0.15); color: #ef4444; border-color: rgba(239, 68, 68, 0.3);">BLOCKED</span>
+            </div>
+            <div class="template-desc">Corrupt uncleaned NPD (`cleaned: 0`). Missing fields halt pipeline at BLOCKED!</div>
+            <div class="template-meta-row">
+              <span style="color: #ef4444;">Cleaned: 0 (FATAL)</span>
+              <span style="color: #fca5a5;">No IDFS Created</span>
             </div>
           </div>
         </div>
@@ -476,6 +489,16 @@
           rawEnergy: 620,
           rawFlux: 18500
         }
+      },
+      CORRUPT_NPD: {
+        packetId: "PKT-NPD-CORRUPT-" + Math.floor(1000 + Math.random() * 9000),
+        source: "ASPERA-3",
+        instrument: "NPD",
+        cleaned: 0,
+        payload: {
+          corrupt: true,
+          noiseLevel: 999
+        }
       }
     };
 
@@ -507,6 +530,13 @@
       }
     }
 
+    function toggleCleanedFlag() {
+      const newCleaned = activePacket.cleaned === 1 ? 0 : 1;
+      updatePacketField('cleaned', newCleaned);
+      renderFormFields();
+      showToast(`Cleaned flag toggled to: ${newCleaned === 1 ? '1 (CLEANED)' : '0 (RAW UNCLEANED)'}`, 'info');
+    }
+
     function renderFormFields() {
       const container = document.getElementById('hudFieldsContainer');
       const p = activePacket.payload || {};
@@ -524,11 +554,11 @@
 
         <div class="hud-field-group">
           <label class="hud-field-label">
-            <span>Ground Telemetry Flag</span>
-            <span>${activePacket.cleaned === 1 ? 'Cleaned' : 'Raw'}</span>
+            <span>Ground Telemetry Flag (cleaned)</span>
+            <span style="color: var(--accent-cyan); cursor: pointer; text-decoration: underline;" onclick="toggleCleanedFlag()">🔄 Click to Toggle</span>
           </label>
-          <div class="hud-field-control">
-            <input type="text" class="hud-field-input" readonly value="${activePacket.cleaned === 1 ? '1 (CLEANED)' : '0 (RAW UNCLEANED)'}" style="color: ${activePacket.cleaned === 1 ? '#34d399' : '#fbbf24'};">
+          <div class="hud-field-control" onclick="toggleCleanedFlag()" style="cursor: pointer;">
+            <input type="text" class="hud-field-input" readonly value="${activePacket.cleaned === 1 ? '1 (CLEANED - Nominal)' : '0 (RAW UNCLEANED - Trigger FR-04)'}" style="color: ${activePacket.cleaned === 1 ? '#34d399' : '#fbbf24'}; cursor: pointer; font-weight: 700;">
           </div>
         </div>
       `;
@@ -582,29 +612,42 @@
           </div>
         `;
       } else if (activePacket.instrument === 'NPD') {
-        html += `
-          <div class="hud-field-group">
-            <label class="hud-field-label">Hydrogen Atom Flux (H-ENA)</label>
-            <div class="hud-field-control">
-              <input type="number" class="hud-field-input" value="${p.hydrogenFlux ?? 1250}" oninput="updatePayloadField('hydrogenFlux', Number(this.value))">
-              <span class="hud-field-unit">atoms/s</span>
+        if (p.corrupt) {
+          html += `
+            <div class="hud-field-group" style="grid-column: 1 / -1; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 0.8rem;">
+              <div style="color: #fca5a5; font-size: 0.85rem; font-weight: 700; margin-bottom: 0.3rem;">
+                🚫 CORRUPT TELEMETRY FRAME DETECTED
+              </div>
+              <div style="font-size: 0.78rem; color: #cbd5e1; line-height: 1.4;">
+                All primary scientific channels (H-ENA flux, O-ENA flux, energy) are missing or scrambled (noiseLevel: ${p.noiseLevel || 999}). The recovery engine will classify this packet as <strong>BLOCKED</strong>.
+              </div>
             </div>
-          </div>
-          <div class="hud-field-group">
-            <label class="hud-field-label">Oxygen Atom Flux (O-ENA)</label>
-            <div class="hud-field-control">
-              <input type="number" class="hud-field-input" value="${p.oxygenFlux ?? 390}" oninput="updatePayloadField('oxygenFlux', Number(this.value))">
-              <span class="hud-field-unit">atoms/s</span>
+          `;
+        } else {
+          html += `
+            <div class="hud-field-group">
+              <label class="hud-field-label">Hydrogen Atom Flux (H-ENA)</label>
+              <div class="hud-field-control">
+                <input type="number" class="hud-field-input" value="${p.hydrogenFlux ?? 1250}" oninput="updatePayloadField('hydrogenFlux', Number(this.value))">
+                <span class="hud-field-unit">atoms/s</span>
+              </div>
             </div>
-          </div>
-          <div class="hud-field-group">
-            <label class="hud-field-label">Energy Range</label>
-            <div class="hud-field-control">
-              <input type="number" class="hud-field-input" value="${p.energyRange ?? 320}" oninput="updatePayloadField('energyRange', Number(this.value))">
-              <span class="hud-field-unit">eV</span>
+            <div class="hud-field-group">
+              <label class="hud-field-label">Oxygen Atom Flux (O-ENA)</label>
+              <div class="hud-field-control">
+                <input type="number" class="hud-field-input" value="${p.oxygenFlux ?? 390}" oninput="updatePayloadField('oxygenFlux', Number(this.value))">
+                <span class="hud-field-unit">atoms/s</span>
+              </div>
             </div>
-          </div>
-        `;
+            <div class="hud-field-group">
+              <label class="hud-field-label">Energy Range</label>
+              <div class="hud-field-control">
+                <input type="number" class="hud-field-input" value="${p.energyRange ?? 320}" oninput="updatePayloadField('energyRange', Number(this.value))">
+                <span class="hud-field-unit">eV</span>
+              </div>
+            </div>
+          `;
+        }
       }
 
       container.innerHTML = html;
